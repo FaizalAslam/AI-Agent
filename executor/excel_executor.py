@@ -15,6 +15,18 @@ class ExcelExecutor:
         self.wb = wb
         self.ws = ws
 
+    def _iter_cells(self, range_ref):
+        ref = (range_ref or "").strip()
+        if not ref:
+            return []
+        if ":" not in ref:
+            return [self.ws[ref]]
+        cells = []
+        for row in self.ws[ref]:
+            for cell in row:
+                cells.append(cell)
+        return cells
+
     def run(self, action_dict):
         action  = action_dict.get("action")
         handler = getattr(self, f"_do_{action}", None)
@@ -101,26 +113,24 @@ class ExcelExecutor:
 
     def _do_set_bold(self, p):
         from openpyxl.styles import Font
-        for row in self.ws[p["range"]]:
-            for cell in row:
-                cell.font = Font(
-                    bold=p.get("bold", True),
-                    italic=cell.font.italic,
-                    size=cell.font.size,
-                    name=cell.font.name,
-                    color=cell.font.color
-                )
+        for cell in self._iter_cells(p["range"]):
+            cell.font = Font(
+                bold=p.get("bold", True),
+                italic=cell.font.italic,
+                size=cell.font.size,
+                name=cell.font.name,
+                color=cell.font.color
+            )
 
     def _do_set_italic(self, p):
         from openpyxl.styles import Font
-        for row in self.ws[p["range"]]:
-            for cell in row:
-                cell.font = Font(
-                    italic=p.get("italic", True),
-                    bold=cell.font.bold,
-                    size=cell.font.size,
-                    name=cell.font.name
-                )
+        for cell in self._iter_cells(p["range"]):
+            cell.font = Font(
+                italic=p.get("italic", True),
+                bold=cell.font.bold,
+                size=cell.font.size,
+                name=cell.font.name
+            )
 
     def _do_set_underline(self, p):
         from openpyxl.styles import Font
@@ -147,37 +157,35 @@ class ExcelExecutor:
 
     def _do_set_font_size(self, p):
         from openpyxl.styles import Font
-        for row in self.ws[p["range"]]:
-            for cell in row:
-                cell.font = Font(
-                    size=int(p["size"]),
-                    bold=cell.font.bold,
-                    italic=cell.font.italic,
-                    name=cell.font.name
-                )
+        for cell in self._iter_cells(p["range"]):
+            cell.font = Font(
+                size=int(p["size"]),
+                bold=cell.font.bold,
+                italic=cell.font.italic,
+                name=cell.font.name
+            )
 
     def _do_set_font_name(self, p):
         from openpyxl.styles import Font
-        for row in self.ws[p["range"]]:
-            for cell in row:
-                cell.font = Font(
-                    name=p["name"],
-                    bold=cell.font.bold,
-                    italic=cell.font.italic,
-                    size=cell.font.size
-                )
+        for cell in self._iter_cells(p["range"]):
+            cell.font = Font(
+                name=p["name"],
+                bold=cell.font.bold,
+                italic=cell.font.italic,
+                size=cell.font.size
+            )
 
     def _do_set_font_color(self, p):
         from openpyxl.styles import Font
-        for row in self.ws[p["range"]]:
-            for cell in row:
-                cell.font = Font(
-                    color=_xl_color(p["color"]),
-                    bold=cell.font.bold,
-                    italic=cell.font.italic,
-                    size=cell.font.size,
-                    name=cell.font.name
-                )
+        color = _xl_color(p["color"])
+        for cell in self._iter_cells(p["range"]):
+            cell.font = Font(
+                color=color,
+                bold=cell.font.bold,
+                italic=cell.font.italic,
+                size=cell.font.size,
+                name=cell.font.name
+            )
 
     def _do_set_bg_color(self, p):
         from openpyxl.styles import PatternFill
@@ -186,9 +194,8 @@ class ExcelExecutor:
             end_color=p["color"],
             fill_type="solid"
         )
-        for row in self.ws[p["range"]]:
-            for cell in row:
-                cell.fill = fill
+        for cell in self._iter_cells(p["range"]):
+            cell.fill = fill
 
     def _do_set_border(self, p):
         from openpyxl.styles import Border, Side
@@ -234,9 +241,8 @@ class ExcelExecutor:
                 )
 
     def _do_set_number_format(self, p):
-        for row in self.ws[p["range"]]:
-            for cell in row:
-                cell.number_format = p.get("format", "General")
+        for cell in self._iter_cells(p["range"]):
+            cell.number_format = p.get("format", "General")
 
     # â”€â”€ Merge / Unmerge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -300,9 +306,13 @@ class ExcelExecutor:
             del self.wb[name]
 
     def _do_rename_sheet(self, p):
-        ws = self.wb.get(p.get("old_name"))
-        if ws:
-            ws.title = p.get("new_name", "Sheet")
+        old_name = p.get("old_name")
+        new_name = p.get("new_name", "Sheet")
+        if old_name and old_name in self.wb.sheetnames:
+            self.wb[old_name].title = new_name
+            return
+        # If old name is not provided, rename the active sheet.
+        self.ws.title = new_name
 
     def _do_duplicate_sheet(self, p):
         src = self.wb[p.get("name", self.ws.title)]

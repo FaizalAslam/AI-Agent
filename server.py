@@ -18,6 +18,7 @@ from executor.excel_executor import ExcelExecutor
 from executor.word_executor import WordExecutor
 from executor.ppt_executor import PowerPointExecutor
 from parser.command_parser import parse_command
+from ai.openai_handler import OpenAIHandler
 from listener.keyboard_listener import KeyboardListener
 from listener.clipboard_listener import ClipboardListener
 try:
@@ -94,11 +95,18 @@ OFFICE_OUTPUTS = {
     "powerpoint": "output.pptx",
     "ppt": "output.pptx",
 }
+OFFICE_DEPENDENCIES = {
+    "excel": ("openpyxl", "openpyxl"),
+    "word": ("docx", "python-docx"),
+    "powerpoint": ("pptx", "python-pptx"),
+    "ppt": ("pptx", "python-pptx"),
+}
 _cmd_buf = CommandBuffer()
 _clipboard_listener = ClipboardListener(_cmd_buf)
 _keyboard_listener = KeyboardListener(_handle_global_command := None, _cmd_buf)
 _voice_listener = VoiceListener(_handle_global_command) if VOICE_MODULE_AVAILABLE else None
 voice_state = {"enabled": False}
+_openai_handler = OpenAIHandler()
 
 
 # ---- Office Agent helpers -------------------------------------------------
@@ -120,56 +128,366 @@ def _extract_office_agent_command(raw_text):
 
 
 def _resolve_actions(app_name, command_text):
+    def _estimate_subcommands(text):
+        protected = re.sub(
+            r"(\d+\s*(?:col|cols|column|columns)\s+)and(\s*\d+\s*(?:row|rows))",
+            r"\1__AND__\2",
+            (text or "").lower().strip()
+        )
+        protected = re.sub(
+            r"(\d+\s*(?:row|rows)\s+)and(\s*\d+\s*(?:col|cols|column|columns))",
+            r"\1__AND__\2",
+            protected
+        )
+        parts = re.split(r"\s+(?:and|then|also|after that|next)\s+", protected)
+        return max(1, len([p for p in parts if p.strip()]))
+
+    def _actions_cover_command_intents(app, text, actions):
+        low = (text or "").lower()
+        names = {
+            str(a.get("action", "")).strip().lower()
+            for a in (actions or [])
+            if isinstance(a, dict)
+        }
+        if not names:
+            return False
+
+        checks = []
+        if app == "excel":
+            if "background color" in low:
+                checks.append("set_bg_color" in names)
+            if "font color" in low:
+                checks.append("set_font_color" in names)
+            if "font size" in low:
+                checks.append("set_font_size" in names)
+            if "number format" in low:
+                checks.append("set_number_format" in names)
+            if "formula" in low or "sum" in low:
+                checks.append("write_formula" in names)
+            if "rename" in low and "sheet" in low:
+                checks.append("rename_sheet" in names)
+            if "insert row" in low:
+                checks.append("insert_row" in names)
+            if "[[" in low and "write" in low and "values" in low:
+                checks.append("write_range" in names)
+
+            # If command explicitly targets multiple cells for background color,
+            # ensure cached actions include multiple bg actions.
+            if "background color" in low and "cells" in low and re.search(r"\b[A-Z]{1,3}\d{1,7}\b.*\band\b.*\b[A-Z]{1,3}\d{1,7}\b", text, re.IGNORECASE):
+                bg_count = sum(1 for a in (actions or []) if isinstance(a, dict) and str(a.get("action", "")).lower() == "set_bg_color")
+                checks.append(bg_count >= 2)
+
+        return all(checks) if checks else True
+
+    cache_key, cached_actions, cache_score = command_map.get_cached_actions(app_name, command_text)
+    # Use cache only for exact matches; fuzzy cache reuse can apply stale actions
+    # to similar-but-different commands.
+    if cached_actions and cache_score == 100:
+        cached_count = len([a for a in cached_actions if isinstance(a, dict) and a.get("action")])
+        clause_count = _estimate_subcommands(command_text)
+        if cached_count >= clause_count and _actions_cover_command_intents(app_name, command_text, cached_actions):
+            logging.info(f"Office cache hit [{app_name}] score={cache_score}: {command_text}")
+            return cache_key or command_text, cached_actions, "command-cache"
+        logging.info(
+            f"Ignoring stale cache for [{app_name}] command (cached={cached_count}, clauses={clause_count}): {command_text}"
+        )
+
     actions = parse_command(app_name, command_text)
     if actions:
+        # If parser returns fewer actions than apparent command clauses,
+        # try API and prefer the richer valid result.
+        clause_count = _estimate_subcommands(command_text)
+        if clause_count > len(actions):
+            ai_actions = _openai_handler.interpret(app_name, command_text)
+            if isinstance(ai_actions, dict):
+                ai_actions = [ai_actions]
+            if isinstance(ai_actions, list) and ai_actions:
+                normalized_ai = [a for a in ai_actions if isinstance(a, dict) and a.get("action")]
+                if len(normalized_ai) >= len(actions):
+                    command_map.save_actions(app_name, command_text, normalized_ai)
+                    return command_text, normalized_ai, "openai-fallback"
         command_map.save_actions(app_name, command_text, actions)
         return command_text, actions, "json-parser"
-    return command_text, [], "json-parser"
+
+    ai_actions = _openai_handler.interpret(app_name, command_text)
+    if isinstance(ai_actions, dict):
+        ai_actions = [ai_actions]
+    if isinstance(ai_actions, list) and ai_actions:
+        normalized = [a for a in ai_actions if isinstance(a, dict) and a.get("action")]
+        if normalized:
+            command_map.save_actions(app_name, command_text, normalized)
+            return command_text, normalized, "openai-fallback"
+
+    return command_text, [], "no-match"
 
 
-def _run_office_actions(app_name, actions, file_path=None):
+def _extract_named_file_path(command_text, app_name):
+    text = (command_text or "").strip()
+    ext = {
+        "excel": "xlsx",
+        "word": "docx",
+        "powerpoint": "pptx",
+        "ppt": "pptx",
+    }.get(app_name)
+    if not text or not ext:
+        return ""
+
+    def _sanitize_base(name):
+        cleaned = re.sub(r'[<>:"/\\|?*]+', "", (name or "").strip())
+        cleaned = re.split(r"\s+(?:and|then|with|in|on)\b", cleaned, maxsplit=1, flags=re.IGNORECASE)[0]
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
+        return cleaned
+
+    quoted = re.search(r'["\']([^"\']+\.' + re.escape(ext) + r')["\']', text, re.IGNORECASE)
+    if quoted:
+        return os.path.abspath(quoted.group(1).strip())
+
+    plain = re.search(r'\b([A-Za-z0-9_\- .]+\.' + re.escape(ext) + r')\b', text, re.IGNORECASE)
+    if plain:
+        return os.path.abspath(plain.group(1).strip())
+
+    # Support "named demo" or "called demo" without extension.
+    named = re.search(r'\b(?:named|called|name)\s*[:=]?\s*["\']?([A-Za-z0-9_\- ]{1,100})["\']?\b', text, re.IGNORECASE)
+    if named:
+        base = _sanitize_base(named.group(1))
+        if base:
+            return os.path.abspath(f"{base}.{ext}")
+
+    return ""
+
+
+def _next_available_path(path):
+    base, ext = os.path.splitext(os.path.abspath(path))
+    candidate = f"{base}{ext}"
+    idx = 1
+    while os.path.exists(candidate):
+        candidate = f"{base}_{idx}{ext}"
+        idx += 1
+    return candidate
+
+
+def _generate_new_output_path(app_name):
+    ext = {
+        "excel": "xlsx",
+        "word": "docx",
+        "powerpoint": "pptx",
+        "ppt": "pptx",
+    }.get(app_name, "xlsx")
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    millis = int((time.time() * 1000) % 1000)
+    return os.path.abspath(f"{app_name}_{stamp}_{millis:03d}.{ext}")
+
+
+def _action_names(actions):
+    return {
+        str(action.get("action", "")).strip().lower()
+        for action in (actions or [])
+        if isinstance(action, dict)
+    }
+
+
+def _is_fresh_file_intent(app_name, command_text, actions):
+    action_names = _action_names(actions)
+    create_actions = {
+        "excel": {"create_workbook"},
+        "word": {"create_document"},
+        "powerpoint": {"create_presentation"},
+        "ppt": {"create_presentation"},
+    }
+    if action_names & create_actions.get(app_name, set()):
+        return True
+
+    text = (command_text or "").lower()
+    creation_words = ("create", "new", "start", "make")
+    target_words = ("file", "workbook", "document", "presentation", "ppt")
+    return any(w in text for w in creation_words) and any(w in text for w in target_words)
+
+
+def _should_start_fresh(app_name, command_text, actions, file_path):
+    if file_path:
+        return False
+    if _extract_named_file_path(command_text, app_name):
+        return False
+
+    open_actions = {
+        "excel": {"open_workbook"},
+        "word": {"open_document"},
+        "powerpoint": {"open_presentation"},
+        "ppt": {"open_presentation"},
+    }
+    return not bool(_action_names(actions) & open_actions.get(app_name, set()))
+
+
+def _ensure_fresh_file_action(app_name, command_text, actions, file_path):
+    actions = list(actions or [])
+    if not actions or not _should_start_fresh(app_name, command_text, actions, file_path):
+        return actions
+
+    create_action = {
+        "excel": "create_workbook",
+        "word": "create_document",
+        "powerpoint": "create_presentation",
+        "ppt": "create_presentation",
+    }.get(app_name)
+    if not create_action:
+        return actions
+    if str(actions[0].get("action", "")).strip().lower() == create_action:
+        return actions
+
+    logging.info(f"Prepending {create_action} for fresh {app_name} file: {command_text}")
+    return [{"action": create_action}, *actions]
+
+
+def _resolve_output_file_path(app_name, command_text, actions, file_path):
+    explicit = (file_path or "").strip()
+    if explicit:
+        return os.path.abspath(explicit)
+
+    named = _extract_named_file_path(command_text, app_name)
+    if named:
+        # For "create/new file" style commands, avoid reusing locked/existing targets.
+        if _is_fresh_file_intent(app_name, command_text, actions):
+            return _next_available_path(named)
+        return named
+
+    if _should_start_fresh(app_name, command_text, actions, ""):
+        return _generate_new_output_path(app_name)
+
+    return ""
+
+
+def _office_dependency_error(app_name):
+    module_name, package_name = OFFICE_DEPENDENCIES.get(app_name, (None, None))
+    if not module_name:
+        return None
+    try:
+        __import__(module_name)
+        return None
+    except ModuleNotFoundError:
+        return (
+            f"{app_name.title()} support requires `{package_name}`. "
+            f"Install it with `pip install {package_name}` or `pip install -r requirements.txt`."
+        )
+
+
+def _has_explicit_save_action(app_name, actions, command_text="", file_path=""):
+    names = _action_names(actions)
+    save_map = {
+        "excel": {"save_workbook", "save_workbook_as"},
+        "word": {"save_document", "save_document_as"},
+        "powerpoint": {"save_presentation", "save_presentation_as"},
+        "ppt": {"save_presentation", "save_presentation_as"},
+    }
+    if names & save_map.get(app_name, set()):
+        return True
+
+    # Treat an explicit target filename/path as save intent.
+    if (file_path or "").strip():
+        return True
+    if _extract_named_file_path(command_text, app_name):
+        return True
+    return False
+
+
+def _run_office_actions(app_name, actions, file_path=None, command_text=""):
     app_name = (app_name or "").lower().strip()
     output_path = (file_path or "").strip() or OFFICE_OUTPUTS.get(app_name, "output.xlsx")
     output_path = os.path.abspath(output_path)
     executed = []
     failures = []
     opened = False
+    persisted = False
+    dependency_error = _office_dependency_error(app_name)
+    should_save = _has_explicit_save_action(
+        app_name,
+        actions,
+        command_text=command_text,
+        file_path=file_path or "",
+    )
+
+    if dependency_error:
+        failures.append(dependency_error)
+        return {
+            "ok_count": 0,
+            "total": len(actions),
+            "executed": executed,
+            "failures": failures,
+            "output_path": output_path,
+            "opened": opened,
+            "dependency_error": dependency_error,
+        }
 
     if app_name == "excel":
         from openpyxl import Workbook, load_workbook
         wb = load_workbook(output_path) if os.path.exists(output_path) else Workbook()
         ws = wb.active
+        setattr(wb, "_path", output_path)
         executor = ExcelExecutor(wb, ws)
         for action in actions:
             ok = bool(executor.run(action))
             action_name = action.get("action", "unknown")
             if ok: executed.append(action_name)
             else: failures.append(f"{action_name} failed")
-        wb.save(output_path)
+        final_wb = getattr(executor, "wb", wb)
+        setattr(final_wb, "_path", output_path)
+        if should_save:
+            try:
+                final_wb.save(output_path)
+                persisted = True
+            except PermissionError:
+                fallback_path = _next_available_path(output_path)
+                final_wb.save(fallback_path)
+                output_path = fallback_path
+                persisted = True
+                logging.warning(f"Excel target was locked. Saved to fallback path: {output_path}")
     elif app_name == "word":
         from docx import Document
         doc = Document(output_path) if os.path.exists(output_path) else Document()
+        setattr(doc, "_path", output_path)
         executor = WordExecutor(doc)
         for action in actions:
             ok = bool(executor.run(action))
             action_name = action.get("action", "unknown")
             if ok: executed.append(action_name)
             else: failures.append(f"{action_name} failed")
-        doc.save(output_path)
+        final_doc = getattr(executor, "doc", doc)
+        setattr(final_doc, "_path", output_path)
+        if should_save:
+            try:
+                final_doc.save(output_path)
+                persisted = True
+            except PermissionError:
+                fallback_path = _next_available_path(output_path)
+                final_doc.save(fallback_path)
+                output_path = fallback_path
+                persisted = True
+                logging.warning(f"Word target was locked. Saved to fallback path: {output_path}")
     elif app_name in ("powerpoint", "ppt"):
         from pptx import Presentation
         prs = Presentation(output_path) if os.path.exists(output_path) else Presentation()
+        setattr(prs, "_path", output_path)
         executor = PowerPointExecutor(prs)
         for action in actions:
             ok = bool(executor.run(action))
             action_name = action.get("action", "unknown")
             if ok: executed.append(action_name)
             else: failures.append(f"{action_name} failed")
-        prs.save(output_path)
+        final_prs = getattr(executor, "prs", prs)
+        setattr(final_prs, "_path", output_path)
+        if should_save:
+            try:
+                final_prs.save(output_path)
+                persisted = True
+            except PermissionError:
+                fallback_path = _next_available_path(output_path)
+                final_prs.save(fallback_path)
+                output_path = fallback_path
+                persisted = True
+                logging.warning(f"PowerPoint target was locked. Saved to fallback path: {output_path}")
     else:
         failures.append(f"Unsupported app: {app_name}")
 
-    if not failures and os.path.exists(output_path):
+    if not failures and persisted and os.path.exists(output_path):
         try:
             opened = bool(system_core.open_path(output_path))
         except Exception:
@@ -181,6 +499,7 @@ def _run_office_actions(app_name, actions, file_path=None):
         "executed": executed,
         "failures": failures,
         "output_path": output_path,
+        "persisted": persisted,
         "opened": opened,
     }
 
@@ -194,16 +513,21 @@ def _handle_global_command(raw_text):
                 app_name = "powerpoint"
             cache_key, actions, source = _resolve_actions(app_name, command)
             if not actions:
-                logging.warning(f"No parser match for global office command: {app_name}: {command}")
+                logging.warning(f"No office action match for global command: {app_name}: {command}")
                 return
-            summary = _run_office_actions(app_name, actions)
+            file_path = _resolve_output_file_path(app_name, command, actions, "")
+            actions = _ensure_fresh_file_action(app_name, command, actions, file_path)
+            summary = _run_office_actions(app_name, actions, file_path=file_path, command_text=command)
             if summary["failures"] and cache_key:
                 command_map.remove_action(app_name, cache_key)
             logging.info(
                 f"Global office [{source}] {app_name}: {command} -> "
                 f"{summary['ok_count']}/{summary['total']} | {summary['output_path']}"
             )
-            _safe_speak(f"Executed {summary['ok_count']} actions in {app_name}")
+            if summary.get("persisted"):
+                _safe_speak(f"Executed {summary['ok_count']} actions in {app_name}")
+            else:
+                _safe_speak(f"Executed {summary['ok_count']} actions in {app_name}, not saved")
             return
 
         txt = (raw_text or "").strip()
@@ -317,9 +641,19 @@ def _office_execute_impl(data):
 
     cache_key, actions, source = _resolve_actions(app_name, command)
     if not actions:
-        return jsonify(status="fail", message="No matching command found in JSON parser", source=source)
+        return jsonify(status="fail", message="No matching office command found. Try a more specific action like 'create a new workbook' or 'add heading Introduction'.", source=source)
 
-    summary = _run_office_actions(app_name, actions, file_path=file_path)
+    file_path = _resolve_output_file_path(app_name, command, actions, file_path)
+    actions = _ensure_fresh_file_action(app_name, command, actions, file_path)
+
+    summary = _run_office_actions(app_name, actions, file_path=file_path, command_text=command)
+    if summary.get("dependency_error"):
+        return jsonify(
+            status="fail",
+            message=summary["dependency_error"],
+            source=source,
+            output_file=summary["output_path"]
+        )
     if summary["failures"] and cache_key:
         command_map.remove_action(app_name, cache_key)
         return jsonify(
@@ -331,9 +665,14 @@ def _office_execute_impl(data):
 
     return jsonify(
         status="success",
-        message=f"✅ Executed {summary['ok_count']} actions. Output: {summary['output_path']}",
+        message=(
+            f"✅ Executed {summary['ok_count']} actions. Output: {summary['output_path']}"
+            if summary.get("persisted")
+            else f"✅ Executed {summary['ok_count']} actions (not saved). Add an explicit save command to write a file."
+        ),
         source=source,
         output_file=summary["output_path"],
+        persisted=summary.get("persisted", False),
         opened=summary.get("opened", False)
     )
 

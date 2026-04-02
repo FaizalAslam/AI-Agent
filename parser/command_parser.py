@@ -2,6 +2,7 @@
 import json
 import re
 import logging
+import ast
 from pathlib import Path
 
 logger = logging.getLogger("OfficeAgent")
@@ -147,29 +148,336 @@ def _normalize_for_match(text):
 
 
 def _split_sub_commands(raw_command):
-    text = (raw_command or "").lower().strip()
+    text = (raw_command or "").strip()
 
     # Keep "X columns and Y rows" as one command (same for row/column inverse).
     protected = re.sub(
         r"(\d+\s*(?:col|cols|column|columns)\s+)and(\s*\d+\s*(?:row|rows))",
         r"\1__AND__\2",
-        text
+        text,
+        flags=re.IGNORECASE
     )
     protected = re.sub(
         r"(\d+\s*(?:row|rows)\s+)and(\s*\d+\s*(?:col|cols|column|columns))",
         r"\1__AND__\2",
-        protected
+        protected,
+        flags=re.IGNORECASE
     )
 
-    parts = re.split(r"\s+(?:and|then|also|after that|next|,)\s+", protected)
+    # Do not split on commas: commas are commonly used inside value lists
+    # (for example: "fill A1:A4 with 2, 3, 4, 5").
+    parts = re.split(r"\s+(?:and|then|also|after that|next)\s+", protected, flags=re.IGNORECASE)
     return [p.replace("__AND__", " and ").strip() for p in parts if p.strip()]
+
+
+def _column_to_index(col):
+    n = 0
+    for ch in (col or "").upper():
+        if "A" <= ch <= "Z":
+            n = (n * 26) + (ord(ch) - ord("A") + 1)
+    return n
+
+
+def _index_to_column(n):
+    n = int(n or 1)
+    n = max(1, n)
+    out = []
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        out.append(chr(ord("A") + rem))
+    return "".join(reversed(out))
+
+
+def _parse_range_bounds(range_text):
+    m = re.match(r"^\s*([A-Z]{1,3})(\d{1,7})\s*:\s*([A-Z]{1,3})(\d{1,7})\s*$", (range_text or "").upper())
+    if not m:
+        return None
+    c1, r1, c2, r2 = m.group(1), int(m.group(2)), m.group(3), int(m.group(4))
+    return c1, r1, c2, r2
+
+
+def _parse_fill_values(values_text):
+    if not values_text:
+        return []
+    text = values_text.strip()
+    text = re.sub(r"\band\b", ",", text, flags=re.IGNORECASE)
+    parts = [p.strip() for p in re.split(r"[,\n;]+", text) if p.strip()]
+    values = []
+    for p in parts:
+        if re.fullmatch(r"-?\d+", p):
+            values.append(int(p))
+        elif re.fullmatch(r"-?\d+\.\d+", p):
+            values.append(float(p))
+        else:
+            values.append(p.strip(' "\''))
+    return values
+
+
+def _extract_literal_list(text):
+    if not text:
+        return None
+    match = re.search(r"(\[\s*.*\s*\])", text, re.DOTALL)
+    if not match:
+        return None
+    chunk = match.group(1)
+    try:
+        obj = ast.literal_eval(chunk)
+        return obj
+    except Exception:
+        return None
+
+
+def _parse_excel_structured_actions(raw_command):
+    text = (raw_command or "").strip()
+    low = text.lower()
+    actions = []
+    anchor_col = "A"
+
+    if any(p in low for p in ("create workbook", "new workbook", "create a workbook", "create new workbook")):
+        actions.append({"action": "create_workbook"})
+
+    rename = re.search(r"rename\s+(?:the\s+)?sheet\s+(?:to|as)\s+['\"]?([^'\"\n]+?)['\"]?(?:,|$|\s+then|\s+and)", text, re.IGNORECASE)
+    if rename:
+        actions.append({"action": "rename_sheet", "new_name": rename.group(1).strip()})
+
+    write_values = re.search(
+        r"write\s+(?:the\s+)?values\s*(\[\[.*?\]\])\s*(?:starting\s+at|at|in)\s*([A-Z]{1,3}\d{1,7})",
+        text,
+        re.IGNORECASE | re.DOTALL
+    )
+    if write_values:
+        try:
+            matrix = ast.literal_eval(write_values.group(1))
+            if isinstance(matrix, list):
+                start_cell = write_values.group(2).upper()
+                m = re.match(r"^([A-Z]{1,3})\d{1,7}$", start_cell)
+                if m:
+                    anchor_col = m.group(1)
+                actions.append({
+                    "action": "write_range",
+                    "start_cell": start_cell,
+                    "values": matrix,
+                })
+        except Exception:
+            pass
+
+    insert_row = re.search(r"insert\s+(?:a\s+)?row\s+(?:at\s+)?(?:index|row)?\s*(\d+)", text, re.IGNORECASE)
+    if insert_row:
+        actions.append({"action": "insert_row", "row": int(insert_row.group(1))})
+
+    write_pair = re.search(
+        r"write\s*(\[[^\]]+\])\s*(?:in|at)\s*cell\s*([A-Z]{1,3})(\d{1,7})",
+        text,
+        re.IGNORECASE
+    )
+    if write_pair:
+        try:
+            arr = ast.literal_eval(write_pair.group(1))
+            if isinstance(arr, list) and len(arr) >= 2:
+                base_col = write_pair.group(2).upper()
+                row = int(write_pair.group(3))
+                c1_idx = _column_to_index(base_col)
+                c2 = _index_to_column(c1_idx + 1)
+                actions.append({"action": "write_cell", "cell": f"{base_col}{row}", "value": arr[0]})
+                actions.append({"action": "write_cell", "cell": f"{c2}{row}", "value": arr[1]})
+        except Exception:
+            pass
+
+    # Example: "write ['Design', 'Done', 10] in row 4"
+    write_in_row = re.search(
+        r"write\s*(\[[^\]]+\])\s*(?:in|at)\s*row\s*(\d+)",
+        text,
+        re.IGNORECASE
+    )
+    if write_in_row:
+        try:
+            arr = ast.literal_eval(write_in_row.group(1))
+            row_num = int(write_in_row.group(2))
+            if isinstance(arr, list) and arr:
+                base_idx = _column_to_index(anchor_col)
+                for i, val in enumerate(arr):
+                    col = _index_to_column(base_idx + i)
+                    actions.append({"action": "write_cell", "cell": f"{col}{row_num}", "value": val})
+        except Exception:
+            pass
+
+    def _clean_style_value(v):
+        val = (v or "").strip().strip("'\"")
+        val = re.split(r"\s+(?:and|then|finally)\b", val, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        return val
+
+    def _expand_targets(target_spec):
+        spec = (target_spec or "").strip().upper()
+        if not spec:
+            return []
+        if ":" in spec and not re.search(r"\bAND\b|,", spec):
+            return [spec.replace(" ", "")]
+        refs = re.findall(r"[A-Z]{1,3}\d{1,7}", spec)
+        return refs
+
+    bg_action_range = None
+    bg = re.search(
+        r"background\s+color\s+(?:of\s+)?([A-Z]{1,3}\d{1,7}\s*:\s*[A-Z]{1,3}\d{1,7})\s+(?:to|as)\s+(.+?)(?:,|$)",
+        text,
+        re.IGNORECASE
+    )
+    if bg:
+        bg_range = bg.group(1).replace(" ", "").upper()
+        bg_color_val = _clean_style_value(bg.group(2))
+        bg_color = _extract_color(bg_color_val) or bg_color_val
+        actions.append({"action": "set_bg_color", "range": bg_range, "color": bg_color})
+        bg_action_range = bg_range
+
+    # Example: "set background color of cells C3 and C5 to green"
+    bg_cells = re.search(
+        r"background\s+color\s+of\s+cells?\s+((?:[A-Z]{1,3}\d{1,7}\s*(?:,|and)\s*)+[A-Z]{1,3}\d{1,7})\s+(?:to|as)\s+(.+?)(?:,|$)",
+        text,
+        re.IGNORECASE
+    )
+    if bg_cells:
+        color_val = _clean_style_value(bg_cells.group(2))
+        color = _extract_color(color_val) or color_val
+        refs = _expand_targets(bg_cells.group(1))
+        for ref in refs:
+            actions.append({"action": "set_bg_color", "range": ref, "color": color})
+        if refs:
+            bg_action_range = refs[0]
+
+    font = re.search(
+        r"font\s+color(?:\s+of\s+(?:cells?\s+)?((?:[A-Z]{1,3}\d{1,7}(?:\s*:\s*[A-Z]{1,3}\d{1,7})?(?:\s*(?:,|and)\s*)?)+))?\s+(?:to|as)\s+(.+?)(?:,|$)",
+        text,
+        re.IGNORECASE
+    )
+    if font:
+        font_targets = _expand_targets(font.group(1) or bg_action_range or "")
+        font_color_val = _clean_style_value(font.group(2))
+        font_color = _extract_color(font_color_val) or font_color_val
+        for target in font_targets:
+            actions.append({"action": "set_font_color", "range": target, "color": font_color})
+
+    font_size = re.search(
+        r"font\s+size(?:\s+of\s+(?:cells?\s+)?((?:[A-Z]{1,3}\d{1,7}(?:\s*:\s*[A-Z]{1,3}\d{1,7})?(?:\s*(?:,|and)\s*)?)+))?\s+(?:to|as)\s+['\"]?(\d{1,3})(?:\s*(?:pt|px))?['\"]?",
+        text,
+        re.IGNORECASE
+    )
+    if font_size:
+        size_targets = _expand_targets(font_size.group(1) or bg_action_range or "")
+        size_val = int(font_size.group(2))
+        for target in size_targets:
+            actions.append({"action": "set_font_size", "range": target, "size": size_val})
+
+    number_format = re.search(
+        r"number\s+format\s+of\s+(?:cells?\s+)?([A-Z]{1,3}\d{1,7}\s*:\s*[A-Z]{1,3}\d{1,7})\s+(?:to|as)\s+['\"]?([^'\"]+)['\"]?",
+        text,
+        re.IGNORECASE
+    )
+    if number_format:
+        actions.append({
+            "action": "set_number_format",
+            "range": number_format.group(1).replace(" ", "").upper(),
+            "format": number_format.group(2).strip(),
+        })
+
+    # Example: "write a formula in cell D7 that calculates the total days from D3 to D6"
+    sum_formula = re.search(
+        r"formula\s+in\s+cell\s*([A-Z]{1,3}\d{1,7}).*?(?:total|sum).*?from\s*([A-Z]{1,3}\d{1,7})\s*(?:to|-)\s*([A-Z]{1,3}\d{1,7})",
+        text,
+        re.IGNORECASE
+    )
+    if sum_formula:
+        out_cell = sum_formula.group(1).upper()
+        start_ref = sum_formula.group(2).upper()
+        end_ref = sum_formula.group(3).upper()
+        actions.append({
+            "action": "write_formula",
+            "cell": out_cell,
+            "formula": f"=SUM({start_ref}:{end_ref})",
+        })
+
+    bold_range = re.search(
+        r"(?:set\s+the\s+font\s+of\s+the\s+entire\s+range|set\s+bold\s+on\s+range|bold\s+range)\s*([A-Z]{1,3}\d{1,7}\s*:\s*[A-Z]{1,3}\d{1,7})",
+        text,
+        re.IGNORECASE
+    )
+    if not bold_range and "bold" in low:
+        r = _extract_range(text)
+        if r and ":" in r:
+            bold_range = re.match(r"(.+)", r)
+    if bold_range:
+        rng = bold_range.group(1).replace(" ", "")
+        actions.append({"action": "set_bold", "range": rng, "bold": True})
+
+    # Keep only first occurrence for idempotent setup actions.
+    dedup = []
+    seen = set()
+    for act in actions:
+        key = (act.get("action"), act.get("cell"), act.get("range"), act.get("start_cell"), act.get("new_name"))
+        if key in seen:
+            continue
+        seen.add(key)
+        dedup.append(act)
+    return dedup
 
 
 def _heuristic_action(app, command_text):
     text = (command_text or "").lower()
+    create_file_phrases = (
+        "create a new file",
+        "create new file",
+        "make a new file",
+        "make new file",
+        "new blank file",
+        "blank new file",
+        "start a new file",
+    )
+
+    if any(phrase in text for phrase in create_file_phrases):
+        if app == "excel":
+            return {"action": "create_workbook"}
+        if app == "word":
+            return {"action": "create_document"}
+        if app in ("powerpoint", "ppt"):
+            return {"action": "create_presentation"}
+
+    # Example: "fill A1:A4 with 2, 3, 4, 5"
+    if app == "excel":
+        fill_match = re.search(
+            r"\b(?:fill|populate|write|enter)\s+(?:the\s+values?\s+)?(?:from\s+)?([A-Z]{1,3}\d{1,7}\s*:\s*[A-Z]{1,3}\d{1,7})\s+with\s+(.+?)(?:\s+respectively)?$",
+            command_text,
+            re.IGNORECASE
+        )
+        if fill_match:
+            range_text = fill_match.group(1).replace(" ", "")
+            raw_values = fill_match.group(2).strip()
+            parsed_vals = _parse_fill_values(raw_values)
+            bounds = _parse_range_bounds(range_text)
+            if bounds and parsed_vals:
+                c1, r1, c2, r2 = bounds
+                row_count = abs(r2 - r1) + 1
+                col_count = abs(_column_to_index(c2) - _column_to_index(c1)) + 1
+                total_cells = max(1, row_count * col_count)
+
+                values = parsed_vals[:total_cells]
+                while len(values) < total_cells:
+                    values.append("")
+
+                matrix = []
+                idx = 0
+                for _ in range(row_count):
+                    row_vals = []
+                    for _ in range(col_count):
+                        row_vals.append(values[idx])
+                        idx += 1
+                    matrix.append(row_vals)
+
+                return {
+                    "action": "write_range",
+                    "start_cell": f"{c1}{r1}",
+                    "values": matrix,
+                }
 
     # Example: "create a table with 4 columns and 5 rows"
-    if app == "excel" and "table" in text and any(w in text for w in ("create", "make", "insert", "add", "build")):
+    if app == "excel" and "table" in text and any(w in text for w in ("create", "make", "insert", "add", "build", "include")):
         rows, cols = _extract_rows_cols(text)
         start_cell = _extract_cell(text) or "A1"
         return {
@@ -494,7 +802,7 @@ def _resolve_params(params, command_text, app):
             resolved[key] = cols or 3
 
         elif placeholder == "row_number":
-            m = re.search(r'row\s*(\d+)', command_text.lower())
+            m = re.search(r'(?:row|index)\s*(\d+)', command_text.lower())
             resolved[key] = int(m.group(1)) if m else 1
 
         elif placeholder == "column":
@@ -801,7 +1109,8 @@ def _resolve_params(params, command_text, app):
             resolved[key] = "list"
 
         elif placeholder == "values":
-            resolved[key] = ""
+            lit = _extract_literal_list(command_text)
+            resolved[key] = lit if isinstance(lit, list) else []
 
         elif placeholder == "icon_name":
             m = re.search(r'icon\s+["\']?([A-Za-z\s]+?)["\']?(?:\s|$)', command_text.lower())
@@ -878,6 +1187,12 @@ def parse_command(app, raw_command):
     if app not in _COMMAND_FILES:
         logger.warning(f"Unknown app: {app}")
         return []
+
+    if app == "excel":
+        structured_actions = _parse_excel_structured_actions(raw_command)
+        if len(structured_actions) >= 2:
+            logger.info(f"Structured excel parse hit ({len(structured_actions)} actions)")
+            return structured_actions
 
     # Split compound commands by conjunctions
     sub_commands = _split_sub_commands(raw_command)

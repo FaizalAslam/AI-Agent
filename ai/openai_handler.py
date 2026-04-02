@@ -171,6 +171,20 @@ class OpenAIHandler:
         if objects:
             return objects if len(objects) > 1 else objects[0]
 
+        # Salvage: extract dict-like blocks from malformed arrays and parse
+        # each object independently.
+        candidate_blocks = re.findall(r'\{[^{}]*\}', clean, flags=re.DOTALL)
+        parsed_blocks = []
+        for block in candidate_blocks:
+            try:
+                obj = json.loads(block)
+                if isinstance(obj, dict):
+                    parsed_blocks.append(obj)
+            except json.JSONDecodeError:
+                continue
+        if parsed_blocks:
+            return parsed_blocks if len(parsed_blocks) > 1 else parsed_blocks[0]
+
         logger.error(f"Could not parse JSON from: {text[:200]}")
         return None
 
