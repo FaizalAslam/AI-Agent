@@ -119,6 +119,45 @@ def _extract_text_value(text):
     return None
 
 
+def _extract_word_target(text):
+    if not text:
+        return "selection"
+
+    quoted = re.search(r'["\u201c\u201d\u2018\u2019](.*?)["\u201c\u201d\u2018\u2019]', text)
+    if quoted:
+        candidate = quoted.group(1).strip()
+        if candidate:
+            return candidate
+
+    patterns = [
+        r'(?:for|on|in)\s+(?:the\s+)?text\s+(.+?)(?:\s+to\s+|\s+as\s+|\s+with\s+|$)',
+        r'(?:for|on|in)\s+(?:the\s+)?paragraph\s+(.+?)(?:\s+to\s+|\s+as\s+|\s+with\s+|$)',
+        r'(?:for|on|in)\s+(?:the\s+)?heading\s+(.+?)(?:\s+to\s+|\s+as\s+|\s+with\s+|$)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            candidate = match.group(1).strip(" .")
+            if candidate:
+                return candidate
+
+    return "selection"
+
+
+def _extract_compare_path(text):
+    if not text:
+        return ""
+    match = re.search(r'["\']([^"\']+\.(?:docx|doc|rtf|odt))["\']', text, re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_data_source(text):
+    if not text:
+        return ""
+    match = re.search(r'["\']([^"\']+\.(?:csv|xlsx|xls|json|txt))["\']', text, re.IGNORECASE)
+    return match.group(1).strip() if match else ""
+
+
 def _extract_filename(text):
     match = re.search(r'(?:as|named?|called?|to)\s+["\']?([a-zA-Z0-9_\-\s\.]+)["\']?', text.lower())
     if match:
@@ -816,6 +855,8 @@ def _resolve_params(params, command_text, app):
         elif placeholder == "target":
             if app == "powerpoint":
                 resolved[key] = _extract_target(command_text)
+            elif app == "word":
+                resolved[key] = _extract_word_target(command_text)
             else:
                 resolved[key] = _extract_range(command_text) or "selection"
 
@@ -910,7 +951,7 @@ def _resolve_params(params, command_text, app):
             resolved[key] = int(m.group(1)) if m else 2
 
         elif placeholder == "image_path":
-            m = re.search(r'["\']([^"\']+\.(?:png|jpg|jpeg|gif|bmp|svg))["\']', command_text.lower())
+            m = re.search(r'["\']([^"\']+\.(?:png|jpg|jpeg|gif|bmp|svg))["\']', command_text, re.IGNORECASE)
             resolved[key] = m.group(1) if m else ""
 
         elif placeholder == "video_path":
@@ -1063,10 +1104,10 @@ def _resolve_params(params, command_text, app):
             resolved[key] = '">0"'
 
         elif placeholder == "data_source":
-            resolved[key] = ""
+            resolved[key] = _extract_data_source(command_text)
 
         elif placeholder == "compare_path":
-            resolved[key] = ""
+            resolved[key] = _extract_compare_path(command_text)
 
         elif placeholder == "bookmark_name":
             m = re.search(r'(?:bookmark|mark)\s+["\']?([^\s"\']+)["\']?', command_text.lower())

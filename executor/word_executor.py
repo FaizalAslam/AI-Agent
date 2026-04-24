@@ -28,6 +28,52 @@ class WordExecutor:
             logger.error(f"Word action '{action}' failed: {e}")
             return False
 
+    def _targeted_paragraphs(self, p):
+        target = str(p.get("target", "selection") or "selection").strip()
+        paragraphs = list(self.doc.paragraphs)
+        if not paragraphs:
+            return []
+        if target.lower() == "selection":
+            return paragraphs
+
+        target_lower = target.lower()
+        matched = [para for para in paragraphs if target_lower in para.text.lower()]
+        return matched or paragraphs
+
+    def _targeted_runs(self, p):
+        runs = []
+        for para in self._targeted_paragraphs(p):
+            runs.extend(list(para.runs))
+        return runs
+
+    def _highlight_color(self, raw_color):
+        from docx.enum.text import WD_COLOR_INDEX
+
+        color = str(raw_color or "yellow").strip().lower()
+        hex_map = {
+            "ffff00": "yellow",
+            "00b050": "green",
+            "00ff00": "green",
+            "00ffff": "cyan",
+            "ff69b4": "pink",
+            "ff0000": "red",
+            "0070c0": "blue",
+            "0000ff": "blue",
+            "808080": "gray",
+            "808080ff": "gray",
+        }
+        color = hex_map.get(color.lstrip("#"), color)
+        color_map = {
+            "yellow": WD_COLOR_INDEX.YELLOW,
+            "green": WD_COLOR_INDEX.BRIGHT_GREEN,
+            "cyan": WD_COLOR_INDEX.CYAN,
+            "pink": WD_COLOR_INDEX.PINK,
+            "red": WD_COLOR_INDEX.RED,
+            "blue": WD_COLOR_INDEX.BLUE,
+            "gray": WD_COLOR_INDEX.GRAY_25,
+            "grey": WD_COLOR_INDEX.GRAY_25,
+        }
+        return color_map.get(color, WD_COLOR_INDEX.YELLOW)
 
     def _do_create_document(self, p):
         from docx import Document
@@ -86,19 +132,16 @@ class WordExecutor:
     # â”€â”€ Font & Style â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     def _do_set_bold(self, p):
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.bold = p.get("bold", True)
+        for run in self._targeted_runs(p):
+            run.bold = p.get("bold", True)
 
     def _do_set_italic(self, p):
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.italic = p.get("italic", True)
+        for run in self._targeted_runs(p):
+            run.italic = p.get("italic", True)
 
     def _do_set_underline(self, p):
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.underline = p.get("underline", True)
+        for run in self._targeted_runs(p):
+            run.underline = p.get("underline", True)
 
     def _do_remove_underline(self, p):
         for para in self.doc.paragraphs:
@@ -108,79 +151,59 @@ class WordExecutor:
     def _do_set_strikethrough(self, p):
         from docx.oxml.ns import qn
         from lxml import etree
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                rPr    = run._r.get_or_add_rPr()
-                strike = etree.SubElement(rPr, qn("w:strike"))
-                strike.set(qn("w:val"), "true")
+        for run in self._targeted_runs(p):
+            rPr = run._r.get_or_add_rPr()
+            strike = etree.SubElement(rPr, qn("w:strike"))
+            strike.set(qn("w:val"), "true")
 
     def _do_remove_strikethrough(self, p):
         from docx.oxml.ns import qn
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                rPr    = run._r.get_or_add_rPr()
-                strike = rPr.find(qn("w:strike"))
-                if strike is not None:
-                    rPr.remove(strike)
+        for run in self._targeted_runs(p):
+            rPr = run._r.get_or_add_rPr()
+            strike = rPr.find(qn("w:strike"))
+            if strike is not None:
+                rPr.remove(strike)
 
     def _do_set_superscript(self, p):
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.font.superscript = True
+        for run in self._targeted_runs(p):
+            run.font.superscript = True
 
     def _do_set_subscript(self, p):
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.font.subscript = True
+        for run in self._targeted_runs(p):
+            run.font.subscript = True
 
     def _do_set_font_size(self, p):
         from docx.shared import Pt
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.font.size = Pt(int(p["size"]))
+        for run in self._targeted_runs(p):
+            run.font.size = Pt(int(p["size"]))
 
     def _do_set_font_name(self, p):
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.font.name = p["name"]
+        for run in self._targeted_runs(p):
+            run.font.name = p["name"]
 
     def _do_set_font_color(self, p):
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.font.color.rgb = _wd_color(p["color"])
+        for run in self._targeted_runs(p):
+            run.font.color.rgb = _wd_color(p["color"])
 
     def _do_set_highlight(self, p):
-        from docx.enum.text import WD_COLOR_INDEX
-        color_map = {
-            "yellow": WD_COLOR_INDEX.YELLOW,
-            "green":  WD_COLOR_INDEX.BRIGHT_GREEN,
-            "cyan":   WD_COLOR_INDEX.CYAN,
-            "pink":   WD_COLOR_INDEX.PINK,
-            "red":    WD_COLOR_INDEX.RED,
-            "blue":   WD_COLOR_INDEX.BLUE,
-            "gray":   WD_COLOR_INDEX.GRAY_25,
-        }
-        color = color_map.get(p.get("color", "yellow").lower(), WD_COLOR_INDEX.YELLOW)
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.font.highlight_color = color
+        color = self._highlight_color(p.get("color", "yellow"))
+        for run in self._targeted_runs(p):
+            run.font.highlight_color = color
 
     def _do_remove_highlight(self, p):
         from docx.enum.text import WD_COLOR_INDEX
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                run.font.highlight_color = WD_COLOR_INDEX.AUTO
+        for run in self._targeted_runs(p):
+            run.font.highlight_color = WD_COLOR_INDEX.AUTO
 
     def _do_change_case(self, p):
         case = p.get("case", "upper")
-        for para in self.doc.paragraphs:
-            for run in para.runs:
-                if case == "upper":
-                    run.text = run.text.upper()
-                elif case == "lower":
-                    run.text = run.text.lower()
-                elif case == "title":
-                    run.text = run.text.title()
+        for run in self._targeted_runs(p):
+            if case == "upper":
+                run.text = run.text.upper()
+            elif case == "lower":
+                run.text = run.text.lower()
+            elif case == "title":
+                run.text = run.text.title()
 
     def _do_clear_formatting(self, p):
         for para in self.doc.paragraphs:
@@ -192,7 +215,7 @@ class WordExecutor:
                 run.font.name = None
 
     def _do_apply_style(self, p):
-        for para in self.doc.paragraphs:
+        for para in self._targeted_paragraphs(p):
             try:
                 para.style = p.get("style", "Normal")
             except Exception:
@@ -209,27 +232,27 @@ class WordExecutor:
             "left":    WD_ALIGN_PARAGRAPH.LEFT,
         }
         align = align_map.get(p.get("alignment", "left"), WD_ALIGN_PARAGRAPH.LEFT)
-        for para in self.doc.paragraphs:
+        for para in self._targeted_paragraphs(p):
             para.alignment = align
 
     def _do_set_line_spacing(self, p):
         spacing = float(p.get("spacing", 1.15))
-        for para in self.doc.paragraphs:
+        for para in self._targeted_paragraphs(p):
             para.paragraph_format.line_spacing = spacing
 
     def _do_set_paragraph_spacing(self, p):
         from docx.shared import Pt
-        for para in self.doc.paragraphs:
+        for para in self._targeted_paragraphs(p):
             para.paragraph_format.space_before = Pt(int(p.get("before", 0)))
             para.paragraph_format.space_after  = Pt(int(p.get("after",  8)))
 
     def _do_set_indent(self, p):
         from docx.shared import Inches
-        for para in self.doc.paragraphs:
+        for para in self._targeted_paragraphs(p):
             para.paragraph_format.first_line_indent = Inches(float(p.get("indent", 0.5)))
 
     def _do_remove_indent(self, p):
-        for para in self.doc.paragraphs:
+        for para in self._targeted_paragraphs(p):
             para.paragraph_format.first_line_indent = None
 
     # â”€â”€ Page Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -439,6 +462,9 @@ class WordExecutor:
 
     def _do_mail_merge(self, p):
         logger.info(f"Mail merge from '{p.get('data_source')}' (requires win32com)")
+
+    def _do_start_mail_merge(self, p):
+        self._do_mail_merge(p)
 
     def _do_compare_documents(self, p):
         logger.info(f"Compare with '{p.get('path')}' (requires win32com)")
