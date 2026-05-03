@@ -579,6 +579,118 @@
         "cell": "D7",
         "formula": "=SUM(D3:D6)"
       }
+    ],
+    "add paragraph hello": [
+      {
+        "action": "insert_chart",
+        "range": "A1",
+        "chart_type": "bar"
+      }
+    ],
+    "change text colour to red": [
+      {
+        "action": "set_font_color",
+        "range": "A1",
+        "color": "FF0000"
+      }
+    ],
+    "create new word file": [
+      {
+        "action": "create_workbook"
+      }
+    ],
+    "save file": [
+      {
+        "action": "save_workbook"
+      }
+    ],
+    "open word and type hello in red": [
+      {
+        "action": "write_cell",
+        "cell": "A1",
+        "value": "hello"
+      }
+    ],
+    "open word and set font colour as red and type hello": [
+      {
+        "action": "set_font_name",
+        "range": "A1",
+        "name": "Colour As Red"
+      },
+      {
+        "action": "write_cell",
+        "cell": "A1",
+        "value": "hello"
+      }
+    ],
+    "open word and write hello in red colour": [
+      {
+        "action": "write_cell",
+        "cell": "A1",
+        "value": "hello"
+      }
+    ],
+    "set font colour red and type hello how are you": [
+      {
+        "action": "set_font_name",
+        "range": "A1",
+        "name": "Colour Red"
+      },
+      {
+        "action": "write_cell",
+        "cell": "A1",
+        "value": "hello how are you"
+      }
+    ],
+    "open word and set font color to red and type hello how are you": [
+      {
+        "action": "set_font_name",
+        "range": "A1",
+        "name": "Color To Red"
+      },
+      {
+        "action": "write_cell",
+        "cell": "A1",
+        "value": "hello how are you"
+      }
+    ],
+    "write text \"this should be red\"": [
+      {
+        "action": "write_cell",
+        "cell": "A1",
+        "value": "this should be red"
+      }
+    ],
+    "open word and change font colour to green": [
+      {
+        "action": "set_font_name",
+        "range": "A1",
+        "name": "Colour To Green"
+      }
+    ],
+    "in word set font color to red and write text \"this is red\"": [
+      {
+        "action": "set_font_name",
+        "range": "A1",
+        "name": "Color To Red"
+      },
+      {
+        "action": "write_cell",
+        "cell": "A1",
+        "value": "this is red"
+      }
+    ],
+    "open word file with path C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228.docx and change hello to hey": [
+      {
+        "action": "open_workbook",
+        "path": ""
+      }
+    ],
+    "create a new documetn": [
+      {
+        "action": "create_workbook",
+        "{}": {}
+      }
     ]
   },
   "word": {
@@ -658,12 +770,620 @@
         "rows": 3,
         "cols": 3
       }
+    ],
+    "add paragraph hello": [
+      {
+        "action": "add_paragraph",
+        "text": "paragraph hello"
+      }
+    ],
+    "change text colour to red": [
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "FF0000"
+      }
+    ],
+    "create new word file": [
+      {
+        "action": "create_document"
+      }
+    ],
+    "type paragraph hello": [
+      {
+        "action": "insert_chart",
+        "chart_type": "bar"
+      }
+    ],
+    "save file": [
+      {
+        "action": "save_document"
+      }
+    ],
+    "write paragraph what are you doing in red colour": [
+      {
+        "action": "add_paragraph",
+        "text": "what are you doing in red colour"
+      }
+    ],
+    "open word and type hello in red": [
+      {
+        "action": "open_document",
+        "path": "C:/doc.docx"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "Hello"
+      },
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "red"
+      }
+    ],
+    "open word": [
+      {
+        "action": "open_document",
+        "path": ""
+      }
+    ],
+    "open word and set font colour as red and type hello": [
+      {
+        "action": "open_document",
+        "path": "C:/doc.docx"
+      },
+      {
+        "action": "set_font_color",
+        "target": "body",
+        "color": "red"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "Hello"
+      }
+    ],
+    "open word and write hello in red colour": [
+      {
+        "action": "open_document",
+        "path": ""
+      },
+      {
+        "action": "add_paragraph",
+        "text": "hello"
+      }
+    ],
+    "set font colour red and type hello how are you": [
+      {
+        "action": "set_font_color",
+        "target": "body",
+        "color": "red"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "Hello how are you"
+      }
+    ],
+    "open word and set font color to red and type hello how are you": [
+      {
+        "action": "open_document",
+        "path": "C:/doc.docx"
+      },
+      {
+        "action": "set_font_color",
+        "target": "body",
+        "color": "red"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "Hello how are you"
+      }
+    ],
+    "delete everything from the word file": [
+      {
+        "action": "clear_range",
+        "range": "1:10000"
+      }
+    ],
+    "Create a Word document, add the text \"This should be red\", change the font color to red, and save it as font_color_test.docx": [
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "FF0000"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "Create a Word document, add the text \"This should be red\", change the font color to red": [
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "FF0000"
+      }
+    ],
+    "write text \"this should be red\"": [
+      {
+        "action": "add_paragraph",
+        "text": "this should be red"
+      }
+    ],
+    "create a new word document, write text \"This should be red\", change text color to red, save as font_color_test.docx": [
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "FF0000"
+      }
+    ],
+    "open word and change font colour to green": [
+      {
+        "action": "open_document",
+        "path": ""
+      },
+      {
+        "action": "set_font_name",
+        "target": "selection",
+        "name": "Colour To Green"
+      }
+    ],
+    "in word set font color to red and write text \"this is red\"": [
+      {
+        "action": "set_font_name",
+        "target": "selection",
+        "name": "Color To Red"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "this is red"
+      }
+    ],
+    "create new document in word and set font colour yellow and type hello": [
+      {
+        "action": "create_document"
+      },
+      {
+        "action": "set_font_color",
+        "target": "body",
+        "color": "yellow"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "Hello"
+      }
+    ],
+    "open word file with path C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228.docx and change hello to hey": [
+      {
+        "action": "open_document",
+        "path": "C:/ai_agent/AI-AGENT/word_20260502_193255_228.docx"
+      },
+      {
+        "action": "find_replace",
+        "find_text": "hello",
+        "replace_text": "hey"
+      }
+    ],
+    "open document \"C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx\" and write text hello": [
+      {
+        "action": "open_document",
+        "path": "C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "text hello"
+      }
+    ],
+    "open document \"C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx\" and write text \"This should be red\" and change text color to red and save document": [
+      {
+        "action": "open_document",
+        "path": "C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "This should be red"
+      },
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "FF0000"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx\" and write text \"This should be red\" and change text color to yellow and save document": [
+      {
+        "action": "open_document",
+        "path": "C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "This should be red"
+      },
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "FFFF00"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx\" and write text \"This should be red\" and change text color to green and save document": [
+      {
+        "action": "open_document",
+        "path": "C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "This should be red"
+      },
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "00B050"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx\" and replace \"red\" with \"brown\" and save document": [
+      {
+        "action": "open_document",
+        "path": "C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx"
+      },
+      {
+        "action": "find_replace",
+        "find_text": "red",
+        "replace_text": "brown"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "create a new document word: write text \"Base paragraph for testing\" word: save as word_test.docx": [
+      {
+        "action": "create_document"
+      }
+    ],
+    "create a new documetn": [
+      {
+        "action": "create_document",
+        "{}": {}
+      }
+    ],
+    "open document \"C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx\"": [
+      {
+        "action": "open_document",
+        "path": "C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228_1.docx"
+      }
+    ],
+    "create new word document": [
+      {
+        "action": "create_document"
+      }
+    ],
+    "write in document \"hello\"": [
+      {
+        "action": "add_paragraph",
+        "text": "hello"
+      }
+    ],
+    "open document \"C:\\ai_agent\\AI-AGENT\\word_20260502_195139_169.docx\"": [
+      {
+        "action": "open_document",
+        "path": "C:\\ai_agent\\AI-AGENT\\word_20260502_195139_169.docx"
+      }
+    ],
+    "open document \"word_test.docx\"": [
+      {
+        "action": "open_document",
+        "path": "word_test.docx"
+      }
+    ],
+    "write text \"this is hello\"": [
+      {
+        "action": "add_paragraph",
+        "text": "this is hello"
+      }
+    ],
+    "create a new document and add heading level 1 with text \"Test Heading\" and save as heading_test.docx": [
+      {
+        "action": "create_document"
+      },
+      {
+        "action": "add_heading",
+        "text": "Test Heading",
+        "level": 1
+      },
+      {
+        "action": "save_document_as",
+        "filename": "heading_test.docx"
+      }
+    ],
+    "create a new document and add heading level 1 with text \"Test Heading\" and save document as \"heading_test.docx\"": [
+      {
+        "action": "create_document"
+      },
+      {
+        "action": "add_heading",
+        "text": "Test Heading",
+        "level": 1
+      },
+      {
+        "action": "save_document_as",
+        "filename": "heading_test.docx"
+      }
+    ],
+    "open document \"heading_test.docx\" and write text \"Hello world\" and bold the text and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "add_paragraph",
+        "text": "Hello world"
+      },
+      {
+        "action": "set_bold",
+        "target": "selection",
+        "bold": true
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and italic the text and underline the text and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "set_italic",
+        "target": "selection",
+        "italic": true
+      },
+      {
+        "action": "set_underline",
+        "target": "selection",
+        "underline": true
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and change text color to blue and highlight the text yellow and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "set_font_color",
+        "target": "selection",
+        "color": "0070C0"
+      },
+      {
+        "action": "set_highlight",
+        "target": "selection",
+        "color": "FFFF00"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and add a table with 3 rows and 3 columns and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "add_table",
+        "rows": 3,
+        "cols": 3
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and add bullets apples, bananas, grapes and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "add_bullet_list",
+        "items": [
+          "add bullets apples",
+          "bananas",
+          "grapes"
+        ]
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and add numbered list one, two, three and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "add_numbered_list",
+        "items": [
+          "add numbered list one",
+          "two",
+          "three"
+        ]
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and add bullets \"apples\", \"bananas\", \"grapes\"": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "add_bullet_list",
+        "items": [
+          "apples",
+          "bananas",
+          "grapes"
+        ]
+      }
+    ],
+    "open document \"heading_test.docx\" and set alignment center and set line spacing 1.5 and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "set_alignment",
+        "target": "selection",
+        "alignment": "center"
+      },
+      {
+        "action": "set_line_spacing",
+        "target": "selection",
+        "spacing": 1.5
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and add header \"Header Test\" and add footer \"Footer Test\" and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "add_header",
+        "text": "Header Test"
+      },
+      {
+        "action": "add_footer",
+        "text": "Footer Test"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and insert page break and insert date and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "insert_page_break"
+      },
+      {
+        "action": "insert_date"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and replace \"Hello world\" with \"Edited text\" and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "find_replace",
+        "find_text": "hello world",
+        "replace_text": "edited text"
+      },
+      {
+        "action": "save_document"
+      }
+    ],
+    "open document \"heading_test.docx\" and add bookmark \"bm1\" and add comment \"review this\" and save document": [
+      {
+        "action": "open_document",
+        "path": "heading_test.docx"
+      },
+      {
+        "action": "add_bookmark",
+        "name": "bm1"
+      },
+      {
+        "action": "add_comment",
+        "text": "review this"
+      },
+      {
+        "action": "save_document"
+      }
     ]
   },
   "powerpoint": {
     "create a new presentation": [
       {
         "action": "create_presentation"
+      }
+    ],
+    "add paragraph hello": [
+      {
+        "action": "insert_chart",
+        "slide_index": 0,
+        "chart_type": "bar"
+      }
+    ],
+    "change text colour to red": [
+      {
+        "action": "set_font_color",
+        "target": "body",
+        "slide_index": 0,
+        "color": "FF0000"
+      }
+    ],
+    "save file": [
+      {
+        "action": "save_presentation"
+      }
+    ],
+    "open word and set font colour as red and type hello": [
+      {
+        "action": "set_font_name",
+        "target": "body",
+        "slide_index": 0,
+        "name": "Colour As Red"
+      }
+    ],
+    "set font colour red and type hello how are you": [
+      {
+        "action": "set_font_name",
+        "target": "body",
+        "slide_index": 0,
+        "name": "Colour Red"
+      }
+    ],
+    "open word and set font color to red and type hello how are you": [
+      {
+        "action": "set_font_name",
+        "target": "body",
+        "slide_index": 0,
+        "name": "Color To Red"
+      }
+    ],
+    "open word and change font colour to green": [
+      {
+        "action": "set_font_name",
+        "target": "body",
+        "slide_index": 0,
+        "name": "Colour To Green"
+      }
+    ],
+    "in word set font color to red and write text \"this is red\"": [
+      {
+        "action": "set_font_name",
+        "target": "body",
+        "slide_index": 0,
+        "name": "Color To Red"
+      }
+    ],
+    "open word file with path C:\\ai_agent\\AI-AGENT\\word_20260502_193255_228.docx and change hello to hey": [
+      {
+        "action": "open_presentation",
+        "path": ""
       }
     ]
   }

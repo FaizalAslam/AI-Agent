@@ -109,6 +109,24 @@ def _extract_text_value(text):
     quoted = re.search(r'["\u201c\u201d\u2018\u2019](.*?)["\u201c\u201d\u2018\u2019]', text)
     if quoted:
         return quoted.group(1)
+    paragraph_match = re.search(
+        r'\b(?:add|write|insert|type)\s+(?:a\s+|new\s+)?paragraph(?:\s+with\s+text)?\s+(.+)$',
+        text,
+        re.IGNORECASE,
+    )
+    if paragraph_match:
+        candidate = paragraph_match.group(1).strip()
+        if candidate:
+            return candidate
+    heading_match = re.search(
+        r'\b(?:add|write|insert|create)\s+heading(?:\s+level\s+\d+)?(?:\s+with\s+text)?\s+(.+)$',
+        text,
+        re.IGNORECASE,
+    )
+    if heading_match:
+        candidate = heading_match.group(1).strip()
+        if candidate:
+            return candidate
     for kw in ["write", "type", "set", "put", "enter", "add", "with text", "text", "saying", "called", "named", "title", "body", "subtitle", "content"]:
         pattern = rf'{kw}\s+(.+?)(?:\s+in\s+|\s+at\s+|\s+to\s+|\s+on\s+|$)'
         match = re.search(pattern, text.lower())
@@ -119,50 +137,48 @@ def _extract_text_value(text):
     return None
 
 
-def _extract_word_target(text):
-    if not text:
-        return "selection"
-
-    quoted = re.search(r'["\u201c\u201d\u2018\u2019](.*?)["\u201c\u201d\u2018\u2019]', text)
-    if quoted:
-        candidate = quoted.group(1).strip()
-        if candidate:
-            return candidate
-
-    patterns = [
-        r'(?:for|on|in)\s+(?:the\s+)?text\s+(.+?)(?:\s+to\s+|\s+as\s+|\s+with\s+|$)',
-        r'(?:for|on|in)\s+(?:the\s+)?paragraph\s+(.+?)(?:\s+to\s+|\s+as\s+|\s+with\s+|$)',
-        r'(?:for|on|in)\s+(?:the\s+)?heading\s+(.+?)(?:\s+to\s+|\s+as\s+|\s+with\s+|$)',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            candidate = match.group(1).strip(" .")
-            if candidate:
-                return candidate
-
-    return "selection"
-
-
-def _extract_compare_path(text):
-    if not text:
-        return ""
-    match = re.search(r'["\']([^"\']+\.(?:docx|doc|rtf|odt))["\']', text, re.IGNORECASE)
-    return match.group(1).strip() if match else ""
-
-
-def _extract_data_source(text):
-    if not text:
-        return ""
-    match = re.search(r'["\']([^"\']+\.(?:csv|xlsx|xls|json|txt))["\']', text, re.IGNORECASE)
-    return match.group(1).strip() if match else ""
-
-
 def _extract_filename(text):
-    match = re.search(r'(?:as|named?|called?|to)\s+["\']?([a-zA-Z0-9_\-\s\.]+)["\']?', text.lower())
+    raw = (text or "").strip()
+    quoted_save_as = re.search(
+        r'\b(?:save(?:\s+document)?\s+as|save\s+file\s+as|export\s+as|rename\s+and\s+save)\s+["\']([^"\']+\.[A-Za-z0-9]{2,5})["\']',
+        raw,
+        re.IGNORECASE,
+    )
+    if quoted_save_as:
+        return quoted_save_as.group(1).strip()
+
+    plain_save_as = re.search(
+        r'\b(?:save(?:\s+document)?\s+as|save\s+file\s+as|export\s+as|rename\s+and\s+save)\s+([A-Za-z0-9_.\- ]+\.[A-Za-z0-9]{2,5})\b',
+        raw,
+        re.IGNORECASE,
+    )
+    if plain_save_as:
+        return plain_save_as.group(1).strip()
+
+    match = re.search(r'(?:as|named?|called?|to)\s+["\']?([a-zA-Z0-9_\-\s\.]+)["\']?', raw, re.IGNORECASE)
     if match:
         return match.group(1).strip()
     return None
+
+
+def _extract_items(text):
+    raw = (text or "").strip()
+    quoted = re.findall(r'["\u201c\u201d](.*?)["\u201c\u201d]', raw)
+    if quoted:
+        return [item.strip() for item in quoted if item.strip()]
+
+    cleaned = re.sub(
+        r'^\s*(?:add|insert|create|make|write)?\s*(?:a\s+)?(?:bullet\s+list|bullets?|bullet\s+points|unordered\s+list|'
+        r'numbered\s+list|numbered\s+points|ordered\s+list|number\s+list|enumerated\s+list|numbered\s+bullets?)\s*',
+        '',
+        raw,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r'^\s*(?:with\s+items?|items?)\s*', '', cleaned, flags=re.IGNORECASE)
+
+    parts = re.split(r'\s*,\s*|\s+and\s+', cleaned, flags=re.IGNORECASE)
+    items = [part.strip(" .") for part in parts if part and part.strip(" .")]
+    return items
 
 
 def _extract_rows_cols(text):
@@ -855,8 +871,6 @@ def _resolve_params(params, command_text, app):
         elif placeholder == "target":
             if app == "powerpoint":
                 resolved[key] = _extract_target(command_text)
-            elif app == "word":
-                resolved[key] = _extract_word_target(command_text)
             else:
                 resolved[key] = _extract_range(command_text) or "selection"
 
@@ -951,7 +965,7 @@ def _resolve_params(params, command_text, app):
             resolved[key] = int(m.group(1)) if m else 2
 
         elif placeholder == "image_path":
-            m = re.search(r'["\']([^"\']+\.(?:png|jpg|jpeg|gif|bmp|svg))["\']', command_text, re.IGNORECASE)
+            m = re.search(r'["\']([^"\']+\.(?:png|jpg|jpeg|gif|bmp|svg))["\']', command_text.lower())
             resolved[key] = m.group(1) if m else ""
 
         elif placeholder == "video_path":
@@ -967,12 +981,7 @@ def _resolve_params(params, command_text, app):
             resolved[key] = m.group(1).strip() if m else ""
 
         elif placeholder == "items":
-            items_match = re.findall(r'["\u201c\u201d](.*?)["\u201c\u201d]', command_text)
-            if items_match:
-                resolved[key] = items_match
-            else:
-                resolved[key] = [s.strip() for s in re.split(r'[,;]', command_text)
-                                 if len(s.strip()) > 1][-5:] or ["Item 1", "Item 2"]
+            resolved[key] = _extract_items(command_text) or ["Item 1", "Item 2"]
 
         elif placeholder == "output_path":
             m = re.search(r'["\']([^"\']+\.pdf)["\']', command_text.lower())
@@ -1104,10 +1113,10 @@ def _resolve_params(params, command_text, app):
             resolved[key] = '">0"'
 
         elif placeholder == "data_source":
-            resolved[key] = _extract_data_source(command_text)
+            resolved[key] = ""
 
         elif placeholder == "compare_path":
-            resolved[key] = _extract_compare_path(command_text)
+            resolved[key] = ""
 
         elif placeholder == "bookmark_name":
             m = re.search(r'(?:bookmark|mark)\s+["\']?([^\s"\']+)["\']?', command_text.lower())

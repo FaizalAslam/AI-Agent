@@ -107,6 +107,12 @@ _keyboard_listener = KeyboardListener(_handle_global_command := None, _cmd_buf)
 _voice_listener = VoiceListener(_handle_global_command) if VOICE_MODULE_AVAILABLE else None
 voice_state = {"enabled": False}
 _openai_handler = OpenAIHandler()
+ACTIVE_OFFICE_FILES = {
+    "excel": "",
+    "word": "",
+    "powerpoint": "",
+    "ppt": "",
+}
 
 
 # ---- Office Agent helpers -------------------------------------------------
@@ -266,6 +272,21 @@ def _next_available_path(path):
     return candidate
 
 
+def _get_active_office_file(app_name):
+    return os.path.abspath(ACTIVE_OFFICE_FILES.get(app_name, "").strip()) if ACTIVE_OFFICE_FILES.get(app_name) else ""
+
+
+def _set_active_office_file(app_name, path):
+    norm = os.path.abspath((path or "").strip()) if (path or "").strip() else ""
+    if app_name in ACTIVE_OFFICE_FILES:
+        ACTIVE_OFFICE_FILES[app_name] = norm
+    # Keep powerpoint/ppt aliases in sync.
+    if app_name == "ppt":
+        ACTIVE_OFFICE_FILES["powerpoint"] = norm
+    elif app_name == "powerpoint":
+        ACTIVE_OFFICE_FILES["ppt"] = norm
+
+
 def _generate_new_output_path(app_name):
     ext = {
         "excel": "xlsx",
@@ -307,6 +328,8 @@ def _should_start_fresh(app_name, command_text, actions, file_path):
     if file_path:
         return False
     if _extract_named_file_path(command_text, app_name):
+        return False
+    if _get_active_office_file(app_name) and not _is_fresh_file_intent(app_name, command_text, actions):
         return False
 
     open_actions = {
@@ -350,6 +373,10 @@ def _resolve_output_file_path(app_name, command_text, actions, file_path):
             return _next_available_path(named)
         return named
 
+    active = _get_active_office_file(app_name)
+    if active and not _should_start_fresh(app_name, command_text, actions, ""):
+        return active
+
     if _should_start_fresh(app_name, command_text, actions, ""):
         return _generate_new_output_path(app_name)
 
@@ -368,6 +395,121 @@ def _office_dependency_error(app_name):
             f"{app_name.title()} support requires `{package_name}`. "
             f"Install it with `pip install {package_name}` or `pip install -r requirements.txt`."
         )
+
+
+def _open_office_output(app_name, output_path):
+    path = os.path.abspath(output_path)
+    if not os.path.exists(path):
+        return False
+
+    if app_name == "word":
+        try:
+            import pythoncom
+            import win32com.client
+
+            pythoncom.CoInitialize()
+            try:
+                word = win32com.client.GetActiveObject("Word.Application")
+            except Exception:
+                word = win32com.client.Dispatch("Word.Application")
+            word.Visible = True
+
+            normalized = os.path.normcase(path)
+            for i in range(1, word.Documents.Count + 1):
+                try:
+                    existing = os.path.normcase(os.path.abspath(word.Documents(i).FullName))
+                except Exception:
+                    continue
+                if existing == normalized:
+                    word.Documents(i).Activate()
+                    return True
+
+            word.Documents.Open(path)
+            return True
+        except Exception:
+            pass
+
+    try:
+        return bool(system_core.open_path(path))
+    except Exception:
+        return False
+
+
+def _infer_office_app_from_command(command_text):
+    text = (command_text or "").strip()
+    if not text:
+        return None, []
+    low = text.lower()
+
+    explicit = re.match(r"^(excel|word|powerpoint|ppt)\s*:\s*(.+)$", text, re.IGNORECASE)
+    if explicit:
+        app_name = explicit.group(1).lower().strip()
+        if app_name == "ppt":
+            app_name = "powerpoint"
+        raw = explicit.group(2).strip()
+        _, actions, _ = _resolve_actions(app_name, raw)
+        return app_name, actions
+
+    word_markers = (
+        "paragraph", "heading", "document", "footer", "header", "page break",
+        "table of contents", "footnote", "endnote", "bookmark",
+        "write text", "add text", "type text", "insert text",
+        "font color", "text color", "text colour", "font size", "font name",
+        "underline", "italic", "bold", "highlight", "line spacing",
+        "margins", "save document", "save as",
+    )
+    excel_markers = (
+        "cell", "range", "sheet", "workbook", "row", "column", "formula",
+        "sum", "average", "chart in cell",
+    )
+    powerpoint_markers = (
+        "slide", "presentation", "slideshow", "speaker notes", "layout",
+    )
+
+    if any(marker in low for marker in word_markers):
+        _, actions, _ = _resolve_actions("word", text)
+        if actions:
+            return "word", actions
+    if any(marker in low for marker in excel_markers):
+        _, actions, _ = _resolve_actions("excel", text)
+        if actions:
+            return "excel", actions
+    if any(marker in low for marker in powerpoint_markers):
+        _, actions, _ = _resolve_actions("powerpoint", text)
+        if actions:
+            return "powerpoint", actions
+
+    ranked = []
+    for candidate in ("excel", "word", "powerpoint"):
+        _, actions, _ = _resolve_actions(candidate, text)
+        if actions:
+            ranked.append((candidate, actions))
+
+    if not ranked:
+        return None, []
+    if len(ranked) == 1:
+        return ranked[0]
+
+    ranked.sort(key=lambda item: len(item[1]), reverse=True)
+    if len(ranked[0][1]) > len(ranked[1][1]):
+        return ranked[0]
+    return None, []
+
+
+def _should_persist_office_file(app_name, actions, command_text="", file_path=""):
+    if _has_explicit_save_action(app_name, actions, command_text=command_text, file_path=file_path):
+        return True
+
+    read_only_actions = {
+        "excel": {"find_data"},
+        "word": {"find_text", "get_word_count"},
+        "powerpoint": set(),
+        "ppt": set(),
+    }
+    names = _action_names(actions)
+    if not names:
+        return False
+    return not names.issubset(read_only_actions.get(app_name, set()))
 
 
 def _has_explicit_save_action(app_name, actions, command_text="", file_path=""):
@@ -398,7 +540,7 @@ def _run_office_actions(app_name, actions, file_path=None, command_text=""):
     opened = False
     persisted = False
     dependency_error = _office_dependency_error(app_name)
-    should_save = _has_explicit_save_action(
+    should_save = _should_persist_office_file(
         app_name,
         actions,
         command_text=command_text,
@@ -488,10 +630,10 @@ def _run_office_actions(app_name, actions, file_path=None, command_text=""):
         failures.append(f"Unsupported app: {app_name}")
 
     if not failures and persisted and os.path.exists(output_path):
-        try:
-            opened = bool(system_core.open_path(output_path))
-        except Exception:
-            opened = False
+        _set_active_office_file(app_name, output_path)
+        opened = _open_office_output(app_name, output_path)
+    elif not failures and output_path:
+        _set_active_office_file(app_name, output_path)
 
     return {
         "ok_count": len(executed),
@@ -574,7 +716,8 @@ def index():
 def execute():
     try:
         data = request.json
-        cmd = data.get("command", "").lower().strip()
+        raw_cmd = (data.get("command") or "").strip()
+        cmd = raw_cmd.lower().strip()
         logging.info(f"Command: {cmd}")
 
         if cmd.startswith(("close ", "shut ", "exit ")):
@@ -582,6 +725,35 @@ def execute():
             success, message = system_core.close_app(app_name)
             _safe_speak(f"Closing {app_name}" if success else f"Could not close {app_name}")
             return jsonify(status="success" if success else "fail", message=message)
+
+        office_app, office_actions = _infer_office_app_from_command(raw_cmd)
+        if office_app and office_actions:
+            office_command = raw_cmd
+            explicit = re.match(r"^(excel|word|powerpoint|ppt)\s*:\s*(.+)$", raw_cmd, re.IGNORECASE)
+            if explicit:
+                office_command = explicit.group(2).strip()
+            summary = _run_office_actions(
+                office_app,
+                _ensure_fresh_file_action(office_app, office_command, office_actions, ""),
+                file_path=_resolve_output_file_path(office_app, office_command, office_actions, ""),
+                command_text=office_command,
+            )
+            if summary.get("dependency_error"):
+                return jsonify(status="fail", message=summary["dependency_error"])
+            if summary["failures"]:
+                return jsonify(
+                    status="fail",
+                    message=f"✅ {summary['ok_count']}/{summary['total']} done | ❌ {' | '.join(summary['failures'])}",
+                    output_file=summary["output_path"],
+                )
+            return jsonify(
+                status="success",
+                message=f"✅ Executed {summary['ok_count']} actions. Output: {summary['output_path']}",
+                output_file=summary["output_path"],
+                persisted=summary.get("persisted", False),
+                opened=summary.get("opened", False),
+                app=office_app,
+            )
 
         app_name = system_core.normalize_app_name(cmd)
         success, message = system_core.find_and_launch(app_name)

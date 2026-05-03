@@ -1,19 +1,66 @@
-21:23:58 - Voice listener started
-21:24:06 - Command: create file hello
-21:24:14 - Store apps loaded: 0 entries
-21:24:17 - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-21:24:59 - Command: create new document named hello
-21:25:00 - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-21:25:32 - Command: open notepad
-21:25:40 - Command: open word
-21:26:24 - Command: open document word_test
-21:26:27 - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-21:31:55 - Command: open file "c:\users\bhavy\onedrive\desktop\word_test.docx"
-21:31:57 - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-21:32:38 - Command: open file "c:\users\bhavy\onedrive\desktop\word_test.docx"
-21:33:10 - Command: open word
-21:33:16 - Command: close word
-21:33:32 - Command: create new word file named hello
-21:33:34 - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-21:34:01 - Command: save this file as hello
-21:34:03 - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+20:06:38 - Voice listener started
+20:06:57 - Command: word: create a new document and add heading level 1 with text "test heading" and save as heading_test.docx
+20:06:57 - Office cache hit [word] score=100: create a new document and add heading level 1 with text "Test Heading" and save as heading_test.docx
+20:07:18 - Command: word: create a new document and add heading level 1 with text "test heading" and save document as "heading_test.docx"
+20:07:18 - Matched 'CREATE_DOCUMENT' (score=8, kws=['create document', 'new document', 'open new document']) \u2192 {'action': 'create_document'}
+20:07:18 - Matched 'ADD_HEADING' (score=6, kws=['add heading', 'heading']) \u2192 {'action': 'add_heading', 'text': 'Test Heading', 'level': 1}
+20:07:18 - Matched 'SAVE_DOCUMENT_AS' (score=10, kws=['save as', 'save document as', 'save file as']) \u2192 {'action': 'save_document_as', 'filename': 'heading_test.docx'}
+20:08:49 - Command: word: open document "heading_test.docx" and write text "hello world" and bold the text and save document
+20:08:49 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:08:49 - Matched 'ADD_PARAGRAPH' (score=6, kws=['write text', 'write']) \u2192 {'action': 'add_paragraph', 'text': 'Hello world'}
+20:08:49 - Matched 'SET_BOLD' (score=8, kws=['bold', 'bold text', 'bold the']) \u2192 {'action': 'set_bold', 'target': 'selection', 'bold': True}
+20:08:49 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:09:10 - Command: word: open document "heading_test.docx" and italic the text and underline the text and save document
+20:09:10 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:09:10 - Matched 'SET_ITALIC' (score=2, kws=['italic']) \u2192 {'action': 'set_italic', 'target': 'selection', 'italic': True}
+20:09:10 - Matched 'SET_UNDERLINE' (score=6, kws=['underline', 'underline text']) \u2192 {'action': 'set_underline', 'target': 'selection', 'underline': True}
+20:09:10 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:09:32 - Command: word: open document "heading_test.docx" and change text color to blue and highlight the text yellow and save document
+20:09:32 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:09:32 - Matched 'SET_FONT_COLOR' (score=16, kws=['text color', 'color text', 'change text color', 'set text color', 'color the text']) \u2192 {'action': 'set_font_color', 'target': 'selection', 'color': '0070C0'}
+20:09:32 - Matched 'SET_HIGHLIGHT' (score=6, kws=['highlight', 'highlight text']) \u2192 {'action': 'set_highlight', 'target': 'selection', 'color': 'FFFF00'}
+20:09:32 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:10:00 - Command: word: open document "heading_test.docx" and add a table with 3 rows and 3 columns and save document
+20:10:00 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:10:00 - Matched 'ADD_TABLE' (score=4, kws=['add table']) \u2192 {'action': 'add_table', 'rows': 3, 'cols': 3}
+20:10:00 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:10:24 - Command: word: open document "heading_test.docx" and add bullets apples, bananas, grapes and save document
+20:10:24 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:10:24 - Matched 'ADD_BULLET_LIST' (score=6, kws=['add bullets', 'bullet']) \u2192 {'action': 'add_bullet_list', 'items': ['add bullets apples', 'bananas', 'grapes']}
+20:10:24 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:11:07 - Command: word: open document "heading_test.docx" and add numbered list one, two, three and save document
+20:11:08 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:11:08 - Matched 'ADD_NUMBERED_LIST' (score=4, kws=['numbered list']) \u2192 {'action': 'add_numbered_list', 'items': ['add numbered list one', 'two', 'three']}
+20:11:08 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:13:39 - Command: word: open document "heading_test.docx" and add bullets "apples", "bananas", "grapes"
+20:13:39 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:13:39 - Matched 'ADD_BULLET_LIST' (score=6, kws=['add bullets', 'bullet']) \u2192 {'action': 'add_bullet_list', 'items': ['apples', 'bananas', 'grapes']}
+20:13:39 - Word target was locked. Saved to fallback path: C:\ai_agent\AI-AGENT\heading_test_1.docx
+20:13:57 - Command: word: open document "heading_test.docx" and set alignment center and set line spacing 1.5 and save document
+20:13:57 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:13:57 - Matched 'SET_ALIGNMENT' (score=8, kws=['align', 'alignment', 'set alignment']) \u2192 {'action': 'set_alignment', 'target': 'selection', 'alignment': 'center'}
+20:13:57 - Matched 'SET_LINE_SPACING' (score=11, kws=['line spacing', 'spacing', 'set spacing', '1.5 spacing']) \u2192 {'action': 'set_line_spacing', 'target': 'selection', 'spacing': 1.5}
+20:13:57 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:14:11 - Command: word: open document "heading_test.docx" and add header "header test" and add footer "footer test" and save document
+20:14:11 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:14:11 - Matched 'ADD_HEADER' (score=6, kws=['header', 'add header']) \u2192 {'action': 'add_header', 'text': 'Header Test'}
+20:14:11 - Matched 'ADD_FOOTER' (score=6, kws=['footer', 'add footer']) \u2192 {'action': 'add_footer', 'text': 'Footer Test'}
+20:14:11 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:14:24 - Command: word: open document "heading_test.docx" and insert page break and insert date and save document
+20:14:24 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:14:24 - Matched 'INSERT_PAGE_BREAK' (score=14, kws=['page break', 'insert page break', 'add page break', 'break page']) \u2192 {'action': 'insert_page_break'}
+20:14:24 - Matched 'INSERT_DATE' (score=4, kws=['insert date']) \u2192 {'action': 'insert_date'}
+20:14:24 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:14:37 - Command: word: open document "heading_test.docx" and replace "hello world" with "edited text" and save document
+20:14:37 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:14:37 - Matched 'FIND_REPLACE' (score=4, kws=['replace', 'replace text']) \u2192 {'action': 'find_replace', 'find_text': 'hello world', 'replace_text': 'edited text'}
+20:14:37 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
+20:15:19 - Command: word: open document "heading_test.docx" and replace "hello world" with "edited text" and save document
+20:15:19 - Office cache hit [word] score=100: open document "heading_test.docx" and replace "Hello world" with "Edited text" and save document
+20:15:37 - Command: word: open document "heading_test.docx" and replace "hello world" with "edited text" and save document
+20:15:37 - Office cache hit [word] score=100: open document "heading_test.docx" and replace "Hello world" with "Edited text" and save document
+20:16:00 - Command: word: open document "heading_test.docx" and add bookmark "bm1" and add comment "review this" and save document
+20:16:00 - Matched 'OPEN_DOCUMENT' (score=4, kws=['open document']) \u2192 {'action': 'open_document', 'path': 'heading_test.docx'}
+20:16:00 - Matched 'ADD_BOOKMARK' (score=6, kws=['bookmark', 'add bookmark']) \u2192 {'action': 'add_bookmark', 'name': 'bm1'}
+20:16:00 - Matched 'ADD_COMMENT' (score=8, kws=['comment', 'add comment', 'review comment']) \u2192 {'action': 'add_comment', 'text': 'review this'}
+20:16:00 - Matched 'SAVE_DOCUMENT' (score=6, kws=['save', 'save document']) \u2192 {'action': 'save_document'}
